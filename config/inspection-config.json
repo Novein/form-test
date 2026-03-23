@@ -1,0 +1,107 @@
+{
+  "appInfo": {
+    "appName": "卫生巾生产线巡检记录系统",
+    "version": "1.0.0",
+    "factoryName": "XX卫生用品有限公司",
+    "defaultTemplateId": "sanitary_pad_daily_inspection",
+    "recordRetentionDays": 30,
+    "autoSaveIntervalMs": 5000,
+    "enableDraftAutoSave": true,
+    "allowEditSubmittedRecord": true,
+    "maxSelectableRecordsForPdf": 10
+  },
+  "baseOptions": {
+    "shifts": [
+      { "id": "morning", "label": "早班" },
+      { "id": "middle", "label": "中班" },
+      { "id": "night", "label": "晚班" }
+    ],
+    "productionLines": [
+      { "id": "line_1", "label": "1号生产线" },
+      { "id": "line_2", "label": "2号生产线" }
+    ],
+    "workshops": [
+      { "id": "pad_workshop", "label": "卫生巾生产车间" }
+    ],
+    "inspectionAreas": [
+      { "id": "forming", "label": "成型区" },
+      { "id": "packaging", "label": "包装区" }
+    ]
+  },
+  "workers": [
+    {
+      "id": "worker_001",
+      "name": "张三",
+      "employeeNo": "A001",
+      "enabled": true,
+      "defaultLineId": "line_1",
+      "defaultShiftId": "morning",
+      "tags": ["巡检员"]
+    },
+    {
+      "id": "worker_002",
+      "name": "李四",
+      "employeeNo": "A002",
+      "enabled": true,
+      "defaultLineId": "line_2",
+      "defaultShiftId": "night",
+      "tags": ["巡检员"]
+    }
+  ],
+  "resultOptionSets": {
+    "normal_abnormal": [
+      { "value": "normal", "label": "正常" },
+      { "value": "abnormal", "label": "异常" }
+    ]
+  },
+  "templates": [
+    {
+      "id": "sanitary_pad_daily_inspection",
+      "name": "卫生巾生产线日常巡检表",
+      "enabled": true,
+      "applicableLineIds": ["line_1", "line_2"],
+      "sections": [
+        {
+          "id": "equipment_status",
+          "title": "设备运行检查",
+          "description": "检查主要设备运行状态是否正常",
+          "sortOrder": 1,
+          "items": [
+            {
+              "id": "main_machine_running_status",
+              "label": "主机运行状态",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "defaultValue": "normal",
+              "allowRemark": true,
+              "remarkRequiredWhen": { "operator": "equals", "value": "abnormal" },
+              "sortOrder": 1
+            },
+            {
+              "id": "running_speed",
+              "label": "运行速度",
+              "type": "number",
+              "required": true,
+              "unit": "m/min",
+              "min": 500,
+              "max": 1200,
+              "sortOrder": 2
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "pdfConfig": {
+    "title": "卫生巾生产线巡检汇总记录",
+    "subTitle": "生产巡检电子记录表",
+    "fileNamePattern": "{date}_{line}_{shift}_巡检记录.pdf",
+    "showFactoryName": true,
+    "showExportTime": true,
+    "showWorkerInfo": true,
+    "showSectionTitle": true,
+    "paperSize": "a4",
+    "orientation": "portrait"
+  }
+}
