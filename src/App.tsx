@@ -10,7 +10,7 @@ import InspectionFormPage from './pages/InspectionFormPage';
 import RecordDetailPage from './pages/RecordDetailPage';
 
 const App: React.FC = () => (
-  <BrowserRouter>
+  <BrowserRouter basename="/form-test/">
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/new" element={<NewRecordPage />} />
