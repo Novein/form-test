@@ -1,0 +1,1238 @@
+可以。下面我先给你一版 **可落地的“打样级”设计**，包括两部分：
+
+1. **配置文件结构设计**
+2. **数据结构设计**
+
+我会按你当前的项目定位来设计：
+
+* 纯前端
+* iPad 轮流填写
+* 配置驱动
+* 卫生巾生产线巡检场景
+* 多人填写后合并导出 PDF
+* 先做第一版，优先简单、清晰、可扩展
+
+我会尽量做到：**现在能直接拿去做前端项目骨架**，同时又给后续扩展留口子。
+
+---
+
+# 一、整体设计原则
+
+先定几个原则，这样你后面看结构就会更容易理解。
+
+## 1. 配置和业务数据分离
+
+要分成两类：
+
+### 配置文件
+
+定义“表单长什么样”：
+
+* 有哪些模板
+* 有哪些巡检项
+* 每个项是什么类型
+* 有哪些选项
+* 哪些工人可选
+* 哪些班次可选
+* 哪些产线可选
+
+### 业务数据
+
+定义“工人填了什么”：
+
+* 谁填的
+* 哪天填的
+* 选了哪些结果
+* 填了什么备注
+* 当前是草稿还是已提交
+
+---
+
+## 2. 配置尽量声明式
+
+也就是尽量不要在代码里写死规则，而是在配置里表达：
+
+* 字段名称
+* 字段类型
+* 是否必填
+* 选项列表
+* 默认值
+* 是否显示备注
+* 是否异常时必填备注
+
+这样后面加新项会很方便。
+
+---
+
+## 3. 第一版先统一一个主配置文件
+
+虽然以后可以拆成：
+
+* workers.json
+* templates.json
+* lines.json
+* app-config.json
+
+但第一版我建议先用一个总配置文件，比如：
+
+```text
+inspection-config.json
+```
+
+理由很简单：
+
+* 管理方便
+* 调试方便
+* 上传部署方便
+* 前端读取方便
+
+等后面稳定了再拆。
+
+---
+
+# 二、配置文件整体结构设计
+
+我先给你顶层结构。
+
+## 配置文件顶层建议
+
+```json
+{
+  "appInfo": {},
+  "baseOptions": {},
+  "workers": [],
+  "templates": [],
+  "resultOptionSets": {},
+  "pdfConfig": {}
+}
+```
+
+这 6 块分别负责：
+
+* `appInfo`：系统基础信息
+* `baseOptions`：班次、产线、区域等基础选项
+* `workers`：工人名单
+* `templates`：巡检模板定义
+* `resultOptionSets`：可复用的巡检结果选项集
+* `pdfConfig`：PDF 导出配置
+
+---
+
+# 三、配置文件详细设计
+
+下面开始逐块展开。
+
+---
+
+## 1. appInfo：系统基础信息
+
+这个主要放系统级参数。
+
+### 设计示例
+
+```json
+{
+  "appInfo": {
+    "appName": "卫生巾生产线巡检记录系统",
+    "version": "1.0.0",
+    "factoryName": "XX卫生用品有限公司",
+    "defaultTemplateId": "sanitary_pad_daily_inspection",
+    "recordRetentionDays": 30,
+    "autoSaveIntervalMs": 5000,
+    "enableDraftAutoSave": true,
+    "allowEditSubmittedRecord": true,
+    "maxSelectableRecordsForPdf": 10
+  }
+}
+```
+
+### 字段说明
+
+* `appName`：系统名称
+* `version`：配置版本
+* `factoryName`：工厂名称
+* `defaultTemplateId`：默认模板
+* `recordRetentionDays`：建议保留天数
+* `autoSaveIntervalMs`：自动保存间隔
+* `enableDraftAutoSave`：是否开启自动保存
+* `allowEditSubmittedRecord`：已提交记录是否允许编辑
+* `maxSelectableRecordsForPdf`：一次导出最多合并多少份记录
+
+---
+
+## 2. baseOptions：基础选项
+
+这个用于放一些全局选择项。
+
+### 设计示例
+
+```json
+{
+  "baseOptions": {
+    "shifts": [
+      { "id": "morning", "label": "早班" },
+      { "id": "middle", "label": "中班" },
+      { "id": "night", "label": "晚班" }
+    ],
+    "productionLines": [
+      { "id": "line_1", "label": "1号生产线" },
+      { "id": "line_2", "label": "2号生产线" },
+      { "id": "line_3", "label": "3号生产线" }
+    ],
+    "workshops": [
+      { "id": "pad_workshop", "label": "卫生巾生产车间" }
+    ],
+    "inspectionAreas": [
+      { "id": "raw_material", "label": "原料区" },
+      { "id": "forming", "label": "成型区" },
+      { "id": "packing", "label": "包装区" },
+      { "id": "finished_goods", "label": "成品区" }
+    ]
+  }
+}
+```
+
+### 说明
+
+这些选项后面会在：
+
+* 基础信息页
+* 筛选页
+* 记录列表页
+  里复用。
+
+---
+
+## 3. workers：工人配置
+
+这个部分定义可选人员。
+
+### 设计示例
+
+```json
+{
+  "workers": [
+    {
+      "id": "worker_001",
+      "name": "张三",
+      "employeeNo": "A001",
+      "enabled": true,
+      "defaultLineId": "line_1",
+      "defaultShiftId": "morning",
+      "tags": ["巡检员"]
+    },
+    {
+      "id": "worker_002",
+      "name": "李四",
+      "employeeNo": "A002",
+      "enabled": true,
+      "defaultLineId": "line_1",
+      "defaultShiftId": "morning",
+      "tags": ["巡检员"]
+    }
+  ]
+}
+```
+
+### 字段说明
+
+* `id`：内部唯一ID
+* `name`：姓名
+* `employeeNo`：工号
+* `enabled`：是否启用
+* `defaultLineId`：默认产线
+* `defaultShiftId`：默认班次
+* `tags`：可扩展字段，后面可用于区分岗位
+
+### 为什么不用姓名做唯一键
+
+因为姓名可能重复，所以建议保留 `id` 和 `employeeNo`。
+
+---
+
+## 4. resultOptionSets：可复用结果选项集
+
+这个非常重要。
+因为很多巡检项会重复使用类似选项。
+
+### 设计示例
+
+```json
+{
+  "resultOptionSets": {
+    "normal_abnormal": [
+      { "value": "normal", "label": "正常" },
+      { "value": "abnormal", "label": "异常" }
+    ],
+    "done_undone_na": [
+      { "value": "done", "label": "已完成" },
+      { "value": "undone", "label": "未完成" },
+      { "value": "na", "label": "不适用" }
+    ],
+    "cleanliness_level": [
+      { "value": "good", "label": "良好" },
+      { "value": "average", "label": "一般" },
+      { "value": "poor", "label": "较差" }
+    ]
+  }
+}
+```
+
+### 好处
+
+模板项里不用每次都重复写选项，直接引用：
+
+* `optionSetId: "normal_abnormal"`
+
+这样后续维护非常方便。
+
+---
+
+## 5. templates：巡检模板配置
+
+这是核心中的核心。
+我建议模板结构分成：
+
+* 模板基础信息
+* 表单基础字段控制
+* 分组 sections
+* 每个分组下的字段 items
+
+---
+
+## 模板结构示意
+
+```json
+{
+  "templates": [
+    {
+      "id": "sanitary_pad_daily_inspection",
+      "name": "卫生巾生产线日常巡检表",
+      "enabled": true,
+      "applicableLineIds": ["line_1", "line_2", "line_3"],
+      "sections": []
+    }
+  ]
+}
+```
+
+---
+
+## 5.1 模板内 section 结构
+
+### 示例
+
+```json
+{
+  "id": "equipment_status",
+  "title": "设备运行检查",
+  "description": "检查主要设备运行状态是否正常",
+  "sortOrder": 1,
+  "items": []
+}
+```
+
+### 字段说明
+
+* `id`：分组ID
+* `title`：分组标题
+* `description`：分组说明
+* `sortOrder`：排序
+* `items`：巡检项列表
+
+---
+
+## 5.2 巡检项 item 结构
+
+第一版建议统一支持以下字段：
+
+```json
+{
+  "id": "main_machine_running_status",
+  "label": "主机运行状态",
+  "type": "radio",
+  "required": true,
+  "optionSetId": "normal_abnormal",
+  "defaultValue": "normal",
+  "allowRemark": true,
+  "remarkRequiredWhen": {
+    "operator": "equals",
+    "value": "abnormal"
+  },
+  "placeholder": "",
+  "unit": "",
+  "sortOrder": 1
+}
+```
+
+---
+
+## 6. 字段类型设计建议
+
+第一版建议只支持 4 类：
+
+### 1）radio
+
+单选，例如：
+
+* 正常 / 异常
+* 已完成 / 未完成 / 不适用
+
+### 2）number
+
+数值输入，例如：
+
+* 温度
+* 压力
+* 速度
+
+### 3）text
+
+短文本，例如：
+
+* 备注
+* 异常说明
+
+### 4）textarea
+
+长文本，例如：
+
+* 综合说明
+* 交接说明
+
+这样已经能覆盖大部分第一版场景。
+
+---
+
+# 四、卫生巾生产线巡检模板打样
+
+下面我给你一个更接近真实业务的示例模板。
+
+---
+
+## 卫生巾生产线巡检模板示例
+
+```json
+{
+  "templates": [
+    {
+      "id": "sanitary_pad_daily_inspection",
+      "name": "卫生巾生产线日常巡检表",
+      "enabled": true,
+      "applicableLineIds": ["line_1", "line_2", "line_3"],
+      "sections": [
+        {
+          "id": "equipment_status",
+          "title": "设备运行检查",
+          "description": "检查生产设备是否正常运行",
+          "sortOrder": 1,
+          "items": [
+            {
+              "id": "main_machine_running_status",
+              "label": "主机运行状态",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 1
+            },
+            {
+              "id": "cutting_device_status",
+              "label": "切刀装置状态",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 2
+            },
+            {
+              "id": "packing_machine_status",
+              "label": "包装机状态",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 3
+            }
+          ]
+        },
+        {
+          "id": "process_parameter",
+          "title": "工艺参数检查",
+          "description": "记录关键工艺参数",
+          "sortOrder": 2,
+          "items": [
+            {
+              "id": "running_speed",
+              "label": "设备运行速度",
+              "type": "number",
+              "required": true,
+              "unit": "片/分钟",
+              "placeholder": "请输入运行速度",
+              "min": 0,
+              "max": 2000,
+              "allowRemark": false,
+              "sortOrder": 1
+            },
+            {
+              "id": "hot_melt_temp",
+              "label": "热熔胶温度",
+              "type": "number",
+              "required": true,
+              "unit": "℃",
+              "placeholder": "请输入温度",
+              "min": 0,
+              "max": 300,
+              "allowRemark": false,
+              "sortOrder": 2
+            }
+          ]
+        },
+        {
+          "id": "quality_check",
+          "title": "产品质量检查",
+          "description": "检查成品质量状态",
+          "sortOrder": 3,
+          "items": [
+            {
+              "id": "pad_shape_integrity",
+              "label": "卫生巾外形完整性",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 1
+            },
+            {
+              "id": "package_sealing_status",
+              "label": "包装封口状态",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 2
+            },
+            {
+              "id": "product_cleanliness",
+              "label": "产品洁净情况",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "cleanliness_level",
+              "allowRemark": true,
+              "sortOrder": 3
+            }
+          ]
+        },
+        {
+          "id": "workshop_environment",
+          "title": "现场环境检查",
+          "description": "检查现场卫生和物料摆放情况",
+          "sortOrder": 4,
+          "items": [
+            {
+              "id": "site_cleanliness",
+              "label": "现场卫生情况",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "cleanliness_level",
+              "allowRemark": true,
+              "sortOrder": 1
+            },
+            {
+              "id": "material_placement_status",
+              "label": "物料摆放是否规范",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 2
+            }
+          ]
+        },
+        {
+          "id": "general_remark",
+          "title": "补充说明",
+          "description": "填写异常情况或其他说明",
+          "sortOrder": 5,
+          "items": [
+            {
+              "id": "overall_remark",
+              "label": "综合备注",
+              "type": "textarea",
+              "required": false,
+              "placeholder": "请输入补充说明",
+              "allowRemark": false,
+              "sortOrder": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+# 五、完整配置文件打样
+
+下面我给你一份更完整的可参考版本，是真正可以作为 `inspection-config.json` 原型的。
+
+```json
+{
+  "appInfo": {
+    "appName": "卫生巾生产线巡检记录系统",
+    "version": "1.0.0",
+    "factoryName": "XX卫生用品有限公司",
+    "defaultTemplateId": "sanitary_pad_daily_inspection",
+    "recordRetentionDays": 30,
+    "autoSaveIntervalMs": 5000,
+    "enableDraftAutoSave": true,
+    "allowEditSubmittedRecord": true,
+    "maxSelectableRecordsForPdf": 10
+  },
+  "baseOptions": {
+    "shifts": [
+      { "id": "morning", "label": "早班" },
+      { "id": "middle", "label": "中班" },
+      { "id": "night", "label": "晚班" }
+    ],
+    "productionLines": [
+      { "id": "line_1", "label": "1号生产线" },
+      { "id": "line_2", "label": "2号生产线" },
+      { "id": "line_3", "label": "3号生产线" }
+    ],
+    "workshops": [
+      { "id": "pad_workshop", "label": "卫生巾生产车间" }
+    ],
+    "inspectionAreas": [
+      { "id": "forming", "label": "成型区" },
+      { "id": "packaging", "label": "包装区" },
+      { "id": "finished_goods", "label": "成品区" }
+    ]
+  },
+  "workers": [
+    {
+      "id": "worker_001",
+      "name": "张三",
+      "employeeNo": "A001",
+      "enabled": true,
+      "defaultLineId": "line_1",
+      "defaultShiftId": "morning",
+      "tags": ["巡检员"]
+    },
+    {
+      "id": "worker_002",
+      "name": "李四",
+      "employeeNo": "A002",
+      "enabled": true,
+      "defaultLineId": "line_1",
+      "defaultShiftId": "morning",
+      "tags": ["巡检员"]
+    }
+  ],
+  "resultOptionSets": {
+    "normal_abnormal": [
+      { "value": "normal", "label": "正常" },
+      { "value": "abnormal", "label": "异常" }
+    ],
+    "done_undone_na": [
+      { "value": "done", "label": "已完成" },
+      { "value": "undone", "label": "未完成" },
+      { "value": "na", "label": "不适用" }
+    ],
+    "cleanliness_level": [
+      { "value": "good", "label": "良好" },
+      { "value": "average", "label": "一般" },
+      { "value": "poor", "label": "较差" }
+    ]
+  },
+  "templates": [
+    {
+      "id": "sanitary_pad_daily_inspection",
+      "name": "卫生巾生产线日常巡检表",
+      "enabled": true,
+      "applicableLineIds": ["line_1", "line_2", "line_3"],
+      "sections": [
+        {
+          "id": "equipment_status",
+          "title": "设备运行检查",
+          "description": "检查生产设备是否正常运行",
+          "sortOrder": 1,
+          "items": [
+            {
+              "id": "main_machine_running_status",
+              "label": "主机运行状态",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 1
+            },
+            {
+              "id": "cutting_device_status",
+              "label": "切刀装置状态",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 2
+            }
+          ]
+        },
+        {
+          "id": "process_parameter",
+          "title": "工艺参数检查",
+          "description": "记录关键工艺参数",
+          "sortOrder": 2,
+          "items": [
+            {
+              "id": "running_speed",
+              "label": "设备运行速度",
+              "type": "number",
+              "required": true,
+              "unit": "片/分钟",
+              "placeholder": "请输入运行速度",
+              "min": 0,
+              "max": 2000,
+              "allowRemark": false,
+              "sortOrder": 1
+            },
+            {
+              "id": "hot_melt_temp",
+              "label": "热熔胶温度",
+              "type": "number",
+              "required": true,
+              "unit": "℃",
+              "placeholder": "请输入温度",
+              "min": 0,
+              "max": 300,
+              "allowRemark": false,
+              "sortOrder": 2
+            }
+          ]
+        },
+        {
+          "id": "quality_check",
+          "title": "产品质量检查",
+          "description": "检查成品质量状态",
+          "sortOrder": 3,
+          "items": [
+            {
+              "id": "pad_shape_integrity",
+              "label": "卫生巾外形完整性",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 1
+            },
+            {
+              "id": "package_sealing_status",
+              "label": "包装封口状态",
+              "type": "radio",
+              "required": true,
+              "optionSetId": "normal_abnormal",
+              "allowRemark": true,
+              "remarkRequiredWhen": {
+                "operator": "equals",
+                "value": "abnormal"
+              },
+              "sortOrder": 2
+            }
+          ]
+        },
+        {
+          "id": "general_remark",
+          "title": "补充说明",
+          "description": "填写其他情况说明",
+          "sortOrder": 4,
+          "items": [
+            {
+              "id": "overall_remark",
+              "label": "综合备注",
+              "type": "textarea",
+              "required": false,
+              "placeholder": "请输入补充说明",
+              "allowRemark": false,
+              "sortOrder": 1
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "pdfConfig": {
+    "title": "卫生巾生产线巡检汇总记录",
+    "subTitle": "生产巡检电子记录表",
+    "fileNamePattern": "{date}_{line}_{shift}_巡检记录.pdf",
+    "showFactoryName": true,
+    "showExportTime": true,
+    "showWorkerInfo": true,
+    "showSectionTitle": true,
+    "paperSize": "a4",
+    "orientation": "portrait"
+  }
+}
+```
+
+---
+
+# 六、数据结构设计
+
+下面讲第二部分：**业务数据结构**。
+
+业务数据我建议至少分成 3 类：
+
+1. 巡检记录
+2. 巡检答案
+3. PDF 导出任务数据
+
+---
+
+## 1. 巡检记录主结构
+
+一条记录就是一个工人一次填写结果。
+
+### 设计示例
+
+```json
+{
+  "id": "record_20260322_001",
+  "templateId": "sanitary_pad_daily_inspection",
+  "templateName": "卫生巾生产线日常巡检表",
+  "workerId": "worker_001",
+  "workerName": "张三",
+  "employeeNo": "A001",
+  "shiftId": "morning",
+  "shiftName": "早班",
+  "productionLineId": "line_1",
+  "productionLineName": "1号生产线",
+  "workshopId": "pad_workshop",
+  "workshopName": "卫生巾生产车间",
+  "inspectionDate": "2026-03-22",
+  "inspectionAreaId": "forming",
+  "inspectionAreaName": "成型区",
+  "status": "submitted",
+  "answers": {},
+  "overallRemark": "",
+  "createdAt": "2026-03-22T09:10:00+08:00",
+  "updatedAt": "2026-03-22T09:20:00+08:00",
+  "submittedAt": "2026-03-22T09:20:00+08:00",
+  "exported": false,
+  "exportedAt": null
+}
+```
+
+---
+
+## 2. answers 结构设计
+
+`answers` 我建议用“以 itemId 为 key 的对象结构”，而不是数组。
+
+因为这样：
+
+* 前端读写快
+* 更新方便
+* 校验方便
+* 渲染方便
+
+### 示例
+
+```json
+{
+  "answers": {
+    "main_machine_running_status": {
+      "value": "normal",
+      "remark": ""
+    },
+    "cutting_device_status": {
+      "value": "abnormal",
+      "remark": "切刀声音异常"
+    },
+    "running_speed": {
+      "value": 850,
+      "remark": ""
+    },
+    "hot_melt_temp": {
+      "value": 165,
+      "remark": ""
+    },
+    "pad_shape_integrity": {
+      "value": "normal",
+      "remark": ""
+    },
+    "package_sealing_status": {
+      "value": "normal",
+      "remark": ""
+    },
+    "overall_remark": {
+      "value": "本次巡检发现切刀需重点关注",
+      "remark": ""
+    }
+  }
+}
+```
+
+---
+
+## 3. answer 单项结构规范
+
+每个巡检项的答案统一结构建议如下：
+
+```json
+{
+  "value": "",
+  "remark": "",
+  "filled": true,
+  "abnormal": false
+}
+```
+
+更完整一点可以是：
+
+```json
+{
+  "value": "abnormal",
+  "remark": "封口偏移",
+  "filled": true,
+  "abnormal": true,
+  "updatedAt": "2026-03-22T09:15:00+08:00"
+}
+```
+
+### 为什么建议统一保留这些字段
+
+* `value`：主值
+* `remark`：备注
+* `filled`：是否已填写
+* `abnormal`：是否异常，方便统计异常项
+* `updatedAt`：便于后续排查和调试
+
+第一版可以先不把每项 `updatedAt` 落库，但结构上可以留概念。
+
+---
+
+# 七、记录状态设计
+
+状态建议至少有两个：
+
+```text
+draft
+submitted
+```
+
+可扩展状态：
+
+```text
+draft
+submitted
+archived
+```
+
+### 建议含义
+
+* `draft`：草稿，未完成
+* `submitted`：已提交，可参与导出
+* `archived`：已导出归档，可选做后续状态
+
+第一版你完全可以只用：
+
+* `draft`
+* `submitted`
+
+---
+
+# 八、IndexedDB 中的表结构建议
+
+虽然前端没有真正“表”，但逻辑上建议这样拆。
+
+## 1. inspection_records
+
+存巡检记录主数据
+
+### 主键
+
+* `id`
+
+### 索引建议
+
+* `inspectionDate`
+* `workerId`
+* `status`
+* `productionLineId`
+* `shiftId`
+* `templateId`
+
+---
+
+## 2. app_runtime_config_cache
+
+用于缓存配置文件版本和内容摘要
+
+### 示例
+
+```json
+{
+  "configVersion": "1.0.0",
+  "loadedAt": "2026-03-22T08:00:00+08:00"
+}
+```
+
+第一版可以不单独建，简单处理即可。
+
+---
+
+# 九、PDF 导出数据结构建议
+
+为了让导出逻辑更清晰，建议在点击导出时，先把选中的记录整理成一个“导出对象”。
+
+### 设计示例
+
+```json
+{
+  "exportId": "export_20260322_001",
+  "title": "卫生巾生产线巡检汇总记录",
+  "inspectionDate": "2026-03-22",
+  "productionLineName": "1号生产线",
+  "shiftName": "早班",
+  "generatedAt": "2026-03-22T10:30:00+08:00",
+  "recordIds": [
+    "record_20260322_001",
+    "record_20260322_002",
+    "record_20260322_003"
+  ],
+  "records": []
+}
+```
+
+这样你导出时可以：
+
+* 先做预览
+* 再生成 PDF
+* 后面也方便扩展成导出 Excel
+
+---
+
+# 十、前端代码里的 TypeScript 类型建议
+
+如果你后面用 React + TS，这些类型会很好用。
+我先用接近 TS 的方式写给你。
+
+---
+
+## 1. 配置类型
+
+```ts
+type OptionItem = {
+  value: string
+  label: string
+}
+
+type Worker = {
+  id: string
+  name: string
+  employeeNo: string
+  enabled: boolean
+  defaultLineId?: string
+  defaultShiftId?: string
+  tags?: string[]
+}
+
+type TemplateItem = {
+  id: string
+  label: string
+  type: 'radio' | 'number' | 'text' | 'textarea'
+  required: boolean
+  optionSetId?: string
+  defaultValue?: string | number
+  allowRemark?: boolean
+  remarkRequiredWhen?: {
+    operator: 'equals'
+    value: string | number
+  }
+  placeholder?: string
+  unit?: string
+  min?: number
+  max?: number
+  sortOrder: number
+}
+
+type TemplateSection = {
+  id: string
+  title: string
+  description?: string
+  sortOrder: number
+  items: TemplateItem[]
+}
+
+type InspectionTemplate = {
+  id: string
+  name: string
+  enabled: boolean
+  applicableLineIds: string[]
+  sections: TemplateSection[]
+}
+```
+
+---
+
+## 2. 业务记录类型
+
+```ts
+type AnswerValue = string | number | null
+
+type InspectionAnswer = {
+  value: AnswerValue
+  remark: string
+  filled: boolean
+  abnormal: boolean
+}
+
+type InspectionRecord = {
+  id: string
+  templateId: string
+  templateName: string
+  workerId: string
+  workerName: string
+  employeeNo: string
+  shiftId: string
+  shiftName: string
+  productionLineId: string
+  productionLineName: string
+  workshopId?: string
+  workshopName?: string
+  inspectionAreaId?: string
+  inspectionAreaName?: string
+  inspectionDate: string
+  status: 'draft' | 'submitted'
+  answers: Record<string, InspectionAnswer>
+  overallRemark?: string
+  createdAt: string
+  updatedAt: string
+  submittedAt?: string
+  exported: boolean
+  exportedAt?: string | null
+}
+```
+
+---
+
+# 十一、我建议你当前第一版就按这个思路定
+
+## 配置文件层面
+
+第一版固定一个：
+
+* `inspection-config.json`
+
+里面包含：
+
+* appInfo
+* baseOptions
+* workers
+* resultOptionSets
+* templates
+* pdfConfig
+
+## 数据层面
+
+第一版核心对象只有一个：
+
+* `InspectionRecord`
+
+里面最核心的是：
+
+* 基础信息
+* answers
+* status
+* 时间字段
+
+---
+
+# 十二、几个我替你先做的设计取舍
+
+为了避免第一版过重，我已经帮你做了这些取舍：
+
+## 1. 不做动态联动题
+
+比如“选了异常才新增更多字段”，第一版先只做：
+
+* 异常时备注必填
+
+这样简单很多。
+
+## 2. 不做照片字段
+
+因为纯前端本地存图片会让数据量迅速变大。
+
+## 3. 不做签名字段
+
+避免 iPad 手写和 PDF 合成复杂度上升。
+
+## 4. 不做多模板嵌套继承
+
+模板先平铺管理，后续需要再做模板复用。
+
+## 5. PDF 先做汇总导出
+
+不追求还原纸质版面。
+
+---
+
+# 十三、接下来最适合做什么
+
+现在需求文档、配置结构、数据结构已经有第一版骨架了。
+下一步最合理的是继续往下走到：
+
+**页面结构设计 + 页面字段流转设计**
+
+也就是明确：
+
+* 首页有什么按钮
+* 新建记录时先选什么
+* 填写页怎么显示 sections
+* 列表页怎么筛选和勾选
+* 导出预览页展示什么
+
+这样一旦定下来，后面写 React 项目就会很顺。
+
+下一步我建议我直接继续帮你输出：
+
+**《页面结构设计 + 页面交互流程 + 字段流转方案 v1》**
